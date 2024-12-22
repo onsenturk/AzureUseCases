@@ -1,0 +1,93 @@
+Before Ora2pg make sure you run this on your database
+exec DBMS_STATS.GATHER_DATABASE_STATS
+exec DBMS_STATS.GATHER_SCHEMA_STATS('target schema')
+-- for me exec DBMS_STATS.GATHER_SCHEMA_STATS('SH')
+exec DBMS_STATS.GATHER_DICTIONARY_STATS
+
+Azure PostgreSQL Flexible Service
+enable the extensions through the portal
+https://learn.microsoft.com/en-us/azure/postgresql/extensions/how-to-allow-extensions?tabs=allow-extensions-portal%2Cload-libraries-portal#how-to-use-postgresql-extensions
+
+CREATE EXTENSION pg_trgm;
+CREATE EXTENSION btree_gin;
+
+Link to ora2pg documentation
+https://ora2pg.darold.net/documentation.html#Installing-Ora2Pg
+
+Link to Azure documentation
+https://learn.microsoft.com/en-us/azure/postgresql/migrate/how-to-migrate-from-oracle
+
+------ install ora2pg ------
+#make sure you run the following
+
+sed -i -e 's/\r$//' install.sh
+chmod 700 install.sh
+. install.sh
+
+
+sudo cp /etc/ora2pg/ora2pg.conf.dist /etc/ora2pg/ora2pg.conf
+
+sudo vim /etc/ora2pg/ora2pg.conf
+
+
+edit ora2pg.conf
+ORACLE_HOME     /usr/lib/oracle/19.19/
+ORACLE_DSN dbi:Oracle:host=172.16.3.5;service_name=pdb_pg;port=1521
+ORACLE_USER     sh
+ORACLE_PWD      password
+
+sudo ora2pg -t SHOW_REPORT
+or
+sudo ora2pg -t SHOW_REPORT --dump_as_html --estimate_cost > report.html
+
+
+cd 
+mkdir ora_migrate
+ora2pg --project_base ora_migrate/ --init_project test_project
+cd ora_migrate/test_project/config
+vim ora2pg.conf
+
+#change the following to see data about specific tables
+ORACLE_HOME     /usr/lib/oracle/19.19/
+ORACLE_DSN dbi:Oracle:host=172.16.3.5;service_name=pdb_pg;port=1521
+ORACLE_USER     sh
+ORACLE_PWD      password
+ALLOW   CUSTOMER,STUDENT,APPLICATION,EMPLOYEE (for specific tables)
+
+MAKE SURE YOU CHANGE THE SCHEMA
+SCHEMA  sh
+
+
+cd /home/azureuser/ora_migrate/test_project
+./export_schema.sh
+
+#Export data as insert scripts
+ora2pg -t insert -o data_insert.sql -b /home/azureuser/data_test -c /etc/ora2pg/ora2pg.conf
+
+#Export data as tables (csv)
+ora2pg -t copy -o data_copy.sql -b /home/azureuser/data_test -c /etc/ora2pg/ora2pg.conf
+
+---- once schema export is taken add the postgres details
+
+export PGHOST=pgfs-demo.postgres.database.azure.com
+export PGPORT=5432
+export PGDATABASE=database_name
+export PGUSER=username
+export PGPASSWORD=password
+
+make sure your pguser has grants on the target database
+otherwise login to psql and
+
+create user username with password 'password';
+GRANT ALL ON DATABASE database_name TO username;
+
+
+only schema
+./import_all.sh -d ora_migrate -h pgfs-demo.postgres.database.azure.com -U pgadmin -o orcl -n newsh -s
+
+only data
+./import_all.sh -d ora_migrate -h pgfs-demo.postgres.database.azure.com -U pgadmin -o orcl -n newsh -a 
+
+only index
+./import_all.sh -d ora_migrate -h pgfs-demo.postgres.database.azure.com -U pgadmin -o orcl -n newsh -i
+
